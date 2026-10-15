@@ -1,0 +1,1143 @@
+
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>DRENAR | Monitoreo meteorológico</title>
+
+<link rel="stylesheet" href="css/leaflet.css">
+<link rel="stylesheet" href="css/qgis2web.css">
+
+<style>
+html, body, #map {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    font-family: Arial, sans-serif;
+}
+
+#map {
+    position: absolute;
+    inset: 0;
+}
+
+#panel {
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    width: 315px;
+    max-width: calc(100vw - 35px);
+    max-height: 92vh;
+    overflow-y: auto;
+    background: rgba(255,255,255,0.97);
+    z-index: 1000;
+    padding: 17px;
+    border-radius: 13px;
+    box-shadow: 0 4px 22px #0004;
+    box-sizing: border-box;
+    font-size: 13px;
+    color: #243c4d;
+}
+
+h2 {
+    color: #1767a3;
+    font-size: 25px;
+    margin: 0;
+}
+
+h3 {
+    font-size: 14px;
+    margin: 16px 0 10px;
+}
+
+.small {
+    font-size: 11px;
+    color: #667785;
+    line-height: 1.5;
+}
+
+.box {
+    background: #edf5fc;
+    border-radius: 9px;
+    padding: 12px;
+    margin-top: 12px;
+}
+
+#hora {
+    text-align: center;
+    font-weight: bold;
+    font-size: 16px;
+    color: #1767a3;
+    margin: 10px 0;
+}
+
+#slider {
+    width: 100%;
+    margin: 14px 0;
+    accent-color: #167ac3;
+}
+
+.controlesAnimacion {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+#playLluvia {
+    flex: 1;
+}
+
+#velocidadLluvia {
+    border: 1px solid #c4d6e4;
+    border-radius: 7px;
+    padding: 8px;
+    background: white;
+    color: #243c4d;
+}
+
+.dato {
+    margin: 10px 0;
+}
+
+.dato strong {
+    color: #11689b;
+}
+
+label {
+    display: block;
+    margin: 12px 0;
+}
+
+button {
+    background: #167ac3;
+    border: 0;
+    color: white;
+    padding: 9px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #105e96;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#actualizar {
+    width: 100%;
+    margin-top: 10px;
+}
+
+#estado {
+    margin-top: 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #526b7a;
+}
+
+#abrir {
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    z-index: 1001;
+    display: none;
+}
+
+.leyenda {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    margin: 9px 0;
+}
+
+.color {
+    width: 17px;
+    height: 17px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.barraColores {
+    width: 100%;
+    height: 16px;
+    border-radius: 6px;
+    margin-top: 12px;
+    background: linear-gradient(
+        to right,
+        #a3e4ff 0%,
+        #238bdb 25%,
+        #1b50ce 50%,
+        #ffbb31 75%,
+        #ed4141 100%
+    );
+}
+
+.extremos {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #667785;
+    margin-top: 4px;
+}
+
+@media(max-width:600px) {
+    #panel {
+        width: 275px;
+        max-height: 85vh;
+        padding: 12px;
+    }
+
+    #velocidadLluvia {
+        max-width: 95px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<button id="abrir" onclick="mostrarPanel()">
+🌧️ DRENAR
+</button>
+
+<div id="panel">
+
+<button onclick="ocultarPanel()" style="float:right">
+×
+</button>
+
+<h2>🌧️ DRENAR</h2>
+
+<div class="small">
+Sistema de monitoreo hídrico urbano<br>
+San Miguel de Tucumán<br>
+Prueba piloto meteorológica
+</div>
+
+<div class="box">
+
+<h3>🌦️ Pronóstico de precipitaciones</h3>
+
+<div id="hora">Cargando pronóstico...</div>
+
+<input
+    id="slider"
+    type="range"
+    min="0"
+    max="23"
+    step="1"
+    value="0"
+    disabled
+>
+
+<div class="controlesAnimacion">
+    <button id="playLluvia" disabled>
+        ▶ Reproducir
+    </button>
+
+    <select id="velocidadLluvia">
+        <option value="1600">Lento</option>
+        <option value="800" selected>Normal</option>
+        <option value="350">Rápido</option>
+    </select>
+</div>
+
+<p class="small">
+Deslizá manualmente o presioná reproducir
+para observar la evolución del pronóstico.
+</p>
+
+<div class="dato">
+💧 Lluvia máxima estimada:
+<strong id="maximo">--</strong>
+</div>
+
+<div class="dato">
+🌧️ Promedio de puntos:
+<strong id="promedio">--</strong>
+</div>
+
+<div class="dato">
+📍 Puntos con datos:
+<strong id="cantidad">--</strong>
+</div>
+
+</div>
+
+<h3>🎨 Intensidad de lluvia</h3>
+
+<div class="small">
+Escala relativa al máximo de precipitación
+de la hora seleccionada.
+</div>
+
+<div class="barraColores"></div>
+
+<div class="extremos">
+    <span>Menor intensidad</span>
+    <span>Mayor intensidad</span>
+</div>
+
+<div class="leyenda">
+<span class="color" style="background:#a3e4ff"></span>
+Muy baja
+</div>
+
+<div class="leyenda">
+<span class="color" style="background:#238bdb"></span>
+Baja
+</div>
+
+<div class="leyenda">
+<span class="color" style="background:#1b50ce"></span>
+Media
+</div>
+
+<div class="leyenda">
+<span class="color" style="background:#ffbb31"></span>
+Alta
+</div>
+
+<div class="leyenda">
+<span class="color" style="background:#ed4141"></span>
+Máxima relativa
+</div>
+
+<h3>🗺️ Capas del mapa</h3>
+
+<label>
+<input type="checkbox" id="verLluvia" checked>
+Mostrar lluvia localizada
+</label>
+
+<label>
+<input type="checkbox" id="verCapital" checked>
+Mostrar límite de Capital
+</label>
+
+<button id="actualizar">
+🔄 Actualizar pronóstico
+</button>
+
+<div id="estado">
+Iniciando DRENAR...
+</div>
+
+<p class="small">
+Fuente: Open-Meteo.<br>
+Visualización local de precipitación pronosticada,
+con influencia espacial limitada.<br>
+No es radar meteorológico ni medición
+a nivel de calle.<br>
+No constituye una alerta de inundación.
+</p>
+
+</div>
+
+<!-- LIBRERÍAS -->
+
+<script src="js/leaflet.js"></script>
+<script src="data/capital_1.js"></script>
+
+<script>
+
+// =====================================
+// 1. CONFIGURACIÓN GENERAL
+// =====================================
+
+const $ = id => document.getElementById(id);
+
+let celdas = [];
+let respuestas = [];
+let horas = [];
+let inicio = 0;
+
+let heatLayer = null;
+let animacionLluvia = null;
+
+const FILAS = 10;
+const COLUMNAS = 10;
+
+// Resolución visual de la superficie
+const RESOLUCION_MAPA = 350;
+
+// Transparencia
+const OPACIDAD_MAPA = 0.73;
+
+// Influencia local: evita propagar valores por toda Capital.
+// Son distancias visuales, no resolución real del pronóstico.
+const RADIO_SUAVIZADO = 0.9; // km: suavidad entre puntos próximos
+const ALCANCE_MAXIMO = 2.4; // km: ningún punto influye más allá
+const INICIO_DESVANECIMIENTO = 1.5; // km desde el dato más cercano
+
+// =====================================
+// 2. MAPA SATELITAL
+// =====================================
+
+const map = L.map("map", {
+    zoomControl: true,
+    maxZoom: 22,
+    minZoom: 1
+}).fitBounds([
+    [-26.89389491492803, -65.3542882956875],
+    [-26.775283337766457, -65.07382385356001]
+]);
+
+const satelite = L.tileLayer(
+    "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+    {
+        maxZoom: 22,
+        maxNativeZoom: 20,
+        attribution: "Map data Google"
+    }
+).addTo(map);
+
+// =====================================
+// 3. CAPAS Y LÍMITE DE CAPITAL
+// =====================================
+
+map.createPane("lluviaPane");
+map.getPane("lluviaPane").style.zIndex = 450;
+map.getPane("lluviaPane").style.pointerEvents = "none";
+
+map.createPane("limitePane");
+map.getPane("limitePane").style.zIndex = 650;
+map.getPane("limitePane").style.pointerEvents = "none";
+
+const capital = L.geoJSON(
+    json_capital_1,
+    {
+        pane: "limitePane",
+        style: {
+            color: "#161616",
+            weight: 2.2,
+            fillOpacity: 0,
+            interactive: false
+        }
+    }
+).addTo(map);
+
+const geometrias = capital.toGeoJSON()
+    .features.map(f => f.geometry);
+
+// =====================================
+// 4. FUNCIONES GEOGRÁFICAS
+// =====================================
+
+function dentroAnillo(lat, lon, anillo) {
+
+    let dentro = false;
+
+    for (
+        let i = 0, j = anillo.length - 1;
+        i < anillo.length;
+        j = i++
+    ) {
+
+        const xi = anillo[i][0];
+        const yi = anillo[i][1];
+        const xj = anillo[j][0];
+        const yj = anillo[j][1];
+
+        const cruza =
+            ((yi > lat) !== (yj > lat)) &&
+            (
+                lon <
+                (xj - xi) * (lat - yi) /
+                (yj - yi) + xi
+            );
+
+        if (cruza) dentro = !dentro;
+    }
+
+    return dentro;
+}
+
+function dentroPoligono(lat, lon, anillos) {
+
+    if (!anillos.length) return false;
+
+    if (!dentroAnillo(lat, lon, anillos[0])) {
+        return false;
+    }
+
+    for (let i = 1; i < anillos.length; i++) {
+        if (dentroAnillo(lat, lon, anillos[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function dentroGeometria(lat, lon, geometria) {
+
+    if (!geometria) return false;
+
+    if (geometria.type === "Polygon") {
+        return dentroPoligono(
+            lat, lon, geometria.coordinates
+        );
+    }
+
+    if (geometria.type === "MultiPolygon") {
+        return geometria.coordinates.some(
+            poligono =>
+                dentroPoligono(lat, lon, poligono)
+        );
+    }
+
+    return false;
+}
+
+function perteneceCapital(lat, lon) {
+
+    return geometrias.some(
+        geometria =>
+            dentroGeometria(lat, lon, geometria)
+    );
+}
+
+// =====================================
+// 5. GENERAR PUNTOS DE CONSULTA
+// =====================================
+
+function crearCeldas() {
+
+    const b = capital.getBounds();
+
+    const sur = b.getSouth();
+    const norte = b.getNorth();
+    const oeste = b.getWest();
+    const este = b.getEast();
+
+    const alto = (norte - sur) / FILAS;
+    const ancho = (este - oeste) / COLUMNAS;
+
+    celdas = [];
+
+    for (let f = 0; f < FILAS; f++) {
+
+        for (let c = 0; c < COLUMNAS; c++) {
+
+            const s = sur + f * alto;
+            const n = s + alto;
+            const o = oeste + c * ancho;
+            const e = o + ancho;
+
+            const lat = (s + n) / 2;
+            const lon = (o + e) / 2;
+
+            if (!perteneceCapital(lat, lon)) {
+                continue;
+            }
+
+            celdas.push({ lat, lon });
+        }
+    }
+}
+
+crearCeldas();
+
+// =====================================
+// 6. CONSULTAR PRONÓSTICO OPEN-METEO
+// =====================================
+
+async function cargarPronostico() {
+
+    detenerAnimacion();
+
+    $("estado").textContent =
+        "Consultando modelo meteorológico...";
+
+    $("actualizar").disabled = true;
+    $("playLluvia").disabled = true;
+    $("slider").disabled = true;
+
+    try {
+
+        if (!celdas.length) {
+            throw new Error(
+                "No se encontraron puntos en Capital"
+            );
+        }
+
+        const latitudes = celdas.map(
+            c => c.lat.toFixed(5)
+        ).join(",");
+
+        const longitudes = celdas.map(
+            c => c.lon.toFixed(5)
+        ).join(",");
+
+        const url =
+            "https://api.open-meteo.com/v1/forecast" +
+            "?latitude=" + latitudes +
+            "&longitude=" + longitudes +
+            "&hourly=precipitation" +
+            "&forecast_days=2" +
+            "&timezone=America%2FArgentina%2FTucuman";
+
+        const r = await fetch(url);
+
+        if (!r.ok) {
+            throw new Error("HTTP " + r.status);
+        }
+
+        const datos = await r.json();
+
+        if (datos.error) {
+            throw new Error(
+                datos.reason || "Error Open-Meteo"
+            );
+        }
+
+        const nuevasRespuestas =
+            Array.isArray(datos) ? datos : [datos];
+
+        if (nuevasRespuestas.length !== celdas.length) {
+            throw new Error(
+                "Cantidad de respuestas inesperada"
+            );
+        }
+
+        if (!nuevasRespuestas.every(
+            x => x.hourly &&
+                 x.hourly.time &&
+                 x.hourly.precipitation
+        )) {
+            throw new Error("Faltan datos horarios");
+        }
+
+        const nuevasHoras =
+            nuevasRespuestas[0].hourly.time;
+
+        const fechaLocal =
+            new Intl.DateTimeFormat(
+                "sv-SE",
+                {
+                    timeZone:
+                        "America/Argentina/Tucuman",
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    hourCycle: "h23"
+                }
+            )
+            .format(new Date())
+            .replace(" ", "T");
+
+        const nuevoInicio = nuevasHoras.findIndex(
+            h => h >= fechaLocal
+        );
+
+        if (nuevoInicio < 0) {
+            throw new Error(
+                "No hay horas futuras disponibles"
+            );
+        }
+
+        const disponibles = Math.min(
+            24,
+            nuevasHoras.length - nuevoInicio
+        );
+
+        if (disponibles < 1) {
+            throw new Error(
+                "No hay pronósticos disponibles"
+            );
+        }
+
+        respuestas = nuevasRespuestas;
+        horas = nuevasHoras;
+        inicio = nuevoInicio;
+
+        $("slider").max = disponibles - 1;
+        $("slider").value = 0;
+
+        $("slider").disabled = false;
+        $("playLluvia").disabled = false;
+
+        dibujarLluvia(0);
+
+    } catch (error) {
+
+        console.error("DRENAR:", error);
+
+        $("estado").textContent =
+            "Error: " + error.message;
+
+        if (respuestas.length) {
+            $("slider").disabled = false;
+            $("playLluvia").disabled = false;
+        }
+
+    } finally {
+
+        $("actualizar").disabled = false;
+    }
+}
+
+// =====================================
+// 7. INFLUENCIA ESPACIAL LOCAL
+// =====================================
+
+// Solo considera puntos próximos; lejos de ellos la capa
+// se vuelve transparente en lugar de inventar un valor.
+function interpolarLluvia(lat, lon, estaciones) {
+
+    let sumaPesos = 0;
+    let sumaValores = 0;
+    let distanciaMinima = Infinity;
+
+    const factorLon = Math.cos(lat * Math.PI / 180);
+    const alcance2 = ALCANCE_MAXIMO * ALCANCE_MAXIMO;
+
+    for (const estacion of estaciones) {
+        const dx = (lon - estacion.lon) * 111.32 * factorLon;
+        const dy = (lat - estacion.lat) * 111.32;
+        const distancia2 = dx * dx + dy * dy;
+
+        if (distancia2 > alcance2) continue;
+
+        distanciaMinima = Math.min(distanciaMinima, Math.sqrt(distancia2));
+        const peso = Math.exp(
+            -distancia2 / (2 * RADIO_SUAVIZADO * RADIO_SUAVIZADO)
+        );
+        sumaPesos += peso;
+        sumaValores += estacion.mm * peso;
+    }
+
+    if (sumaPesos === 0) return { mm: 0, cobertura: 0 };
+
+    // Opacidad decreciente fuera del entorno inmediato del dato.
+    const cobertura = Math.max(0, Math.min(1,
+        (ALCANCE_MAXIMO - distanciaMinima) /
+        (ALCANCE_MAXIMO - INICIO_DESVANECIMIENTO)
+    ));
+
+    return { mm: sumaValores / sumaPesos, cobertura };
+}
+
+// =====================================
+// =====================================
+// 8. COLORES CONTINUOS
+// =====================================
+
+const ESCALA_COLORES = [
+    { valor: 0.00, rgb: [163, 228, 255] },
+    { valor: 0.25, rgb: [35, 139, 219] },
+    { valor: 0.50, rgb: [27, 80, 206] },
+    { valor: 0.75, rgb: [255, 187, 49] },
+    { valor: 1.00, rgb: [237, 65, 65] }
+];
+
+function obtenerColor(intensidad) {
+
+    const v = Math.max(
+        0,
+        Math.min(1, intensidad)
+    );
+
+    for (let i = 1;
+         i < ESCALA_COLORES.length;
+         i++) {
+
+        const anterior = ESCALA_COLORES[i - 1];
+        const siguiente = ESCALA_COLORES[i];
+
+        if (v <= siguiente.valor) {
+
+            const t =
+                (v - anterior.valor) /
+                (siguiente.valor - anterior.valor);
+
+            return [0, 1, 2].map(c =>
+                Math.round(
+                    anterior.rgb[c] * (1 - t) +
+                    siguiente.rgb[c] * t
+                )
+            );
+        }
+    }
+
+    return [237, 65, 65];
+}
+
+// =====================================
+// 9. MAPA DE LLUVIA CONTINUO
+// =====================================
+
+function dibujarLluvia(desplazamiento) {
+
+    if (!respuestas.length) return;
+
+    const indice = inicio + desplazamiento;
+
+    if (!horas[indice]) return;
+
+    if (heatLayer) {
+        map.removeLayer(heatLayer);
+        heatLayer = null;
+    }
+
+    const estaciones = [];
+    const valores = [];
+
+    celdas.forEach((celda, i) => {
+
+        const bruto =
+            respuestas[i].hourly.precipitation[indice];
+
+        const mm = bruto === null
+            ? NaN
+            : Number(bruto);
+
+        if (!Number.isFinite(mm)) return;
+
+        const lluvia = Math.max(0, mm);
+
+        valores.push(lluvia);
+
+        estaciones.push({
+            lat: celda.lat,
+            lon: celda.lon,
+            mm: lluvia
+        });
+    });
+
+    const maximo = valores.length
+        ? Math.max(...valores)
+        : 0;
+
+    const promedio = valores.length
+        ? valores.reduce((a, b) => a + b, 0) /
+          valores.length
+        : 0;
+
+    $("hora").textContent =
+        horas[indice].replace("T", "  ");
+
+    $("maximo").textContent =
+        valores.length
+        ? maximo.toFixed(1) + " mm"
+        : "Sin datos";
+
+    $("promedio").textContent =
+        valores.length
+        ? promedio.toFixed(1) + " mm"
+        : "Sin datos";
+
+    $("cantidad").textContent =
+        valores.length + " / " + celdas.length;
+
+    if (maximo <= 0 || !estaciones.length) {
+
+        $("estado").textContent =
+            "Sin lluvia pronosticada para esta hora.";
+
+        return;
+    }
+
+    // Límites municipales
+
+    const limites = capital.getBounds();
+
+    const sur = limites.getSouth();
+    const norte = limites.getNorth();
+    const oeste = limites.getWest();
+    const este = limites.getEast();
+
+    // Crear superficie raster
+
+    const ancho = RESOLUCION_MAPA;
+
+    const factorLon = Math.cos(
+        ((sur + norte) / 2) * Math.PI / 180
+    );
+
+    const relacion =
+        (norte - sur) /
+        ((este - oeste) * factorLon);
+
+    const alto = Math.max(
+        1,
+        Math.round(ancho * relacion)
+    );
+
+    const canvas = document.createElement("canvas");
+
+    canvas.width = ancho;
+    canvas.height = alto;
+
+    const contexto = canvas.getContext("2d");
+
+    const imagen = contexto.createImageData(
+        ancho,
+        alto
+    );
+
+    const pixeles = imagen.data;
+
+    // Calcular color de cada píxel.
+    // Todos utilizan la misma interpolación.
+
+    for (let y = 0; y < alto; y++) {
+
+        const lat =
+            norte -
+            ((y + 0.5) / alto) * (norte - sur);
+
+        for (let x = 0; x < ancho; x++) {
+
+            const lon =
+                oeste +
+                ((x + 0.5) / ancho) * (este - oeste);
+
+            const pos = (y * ancho + x) * 4;
+
+            if (!perteneceCapital(lat, lon)) {
+                pixeles[pos + 3] = 0;
+                continue;
+            }
+
+            const estimacion = interpolarLluvia(
+                lat,
+                lon,
+                estaciones
+            );
+            const lluvia = estimacion.mm;
+
+            if (lluvia <= 0.005 || estimacion.cobertura <= 0) {
+                pixeles[pos + 3] = 0;
+                continue;
+            }
+
+            const intensidad = Math.min(
+                1,
+                lluvia / maximo
+            );
+
+            const color =
+                obtenerColor(intensidad);
+
+            pixeles[pos] = color[0];
+            pixeles[pos + 1] = color[1];
+            pixeles[pos + 2] = color[2];
+
+            // Opacidad uniforme para evitar
+            // halos circulares de transparencia.
+            pixeles[pos + 3] =
+                Math.round(
+                    255 * OPACIDAD_MAPA * estimacion.cobertura
+                );
+        }
+    }
+
+    contexto.putImageData(imagen, 0, 0);
+
+    const imagenURL =
+        canvas.toDataURL("image/png");
+
+    heatLayer = L.imageOverlay(
+        imagenURL,
+        [
+            [sur, oeste],
+            [norte, este]
+        ],
+        {
+            pane: "lluviaPane",
+            opacity: 1,
+            interactive: false
+        }
+    );
+
+    if ($("verLluvia").checked) {
+        heatLayer.addTo(map);
+    }
+
+    $("estado").textContent =
+        "Mapa local actualizado. " +
+        estaciones.length +
+        " puntos consultados. Influencia máxima: " +
+        ALCANCE_MAXIMO + " km por punto (visualización estimada).";
+}
+
+// =====================================
+// 10. ANIMACIÓN
+// =====================================
+
+const botonPlay = $("playLluvia");
+const barraTiempo = $("slider");
+const selectorVelocidad = $("velocidadLluvia");
+
+function detenerAnimacion() {
+
+    if (animacionLluvia !== null) {
+        clearInterval(animacionLluvia);
+        animacionLluvia = null;
+    }
+
+    botonPlay.textContent = "▶ Reproducir";
+}
+
+function avanzarAnimacion() {
+
+    const maximo = Number(barraTiempo.max);
+
+    let siguiente =
+        Number(barraTiempo.value) + 1;
+
+    if (siguiente > maximo) {
+        siguiente = 0;
+    }
+
+    barraTiempo.value = siguiente;
+
+    dibujarLluvia(siguiente);
+}
+
+function iniciarAnimacion() {
+
+    if (!respuestas.length) {
+        alert("Esperá a que cargue el pronóstico.");
+        return;
+    }
+
+    detenerAnimacion();
+
+    botonPlay.textContent = "⏸ Pausar";
+
+    animacionLluvia = setInterval(
+        avanzarAnimacion,
+        Number(selectorVelocidad.value)
+    );
+}
+
+botonPlay.addEventListener("click", function() {
+
+    if (animacionLluvia !== null) {
+        detenerAnimacion();
+    } else {
+        iniciarAnimacion();
+    }
+});
+
+selectorVelocidad.addEventListener(
+    "change",
+    function() {
+        if (animacionLluvia !== null) {
+            iniciarAnimacion();
+        }
+    }
+);
+
+// =====================================
+// 11. DESLIZADOR TEMPORAL
+// =====================================
+
+barraTiempo.addEventListener(
+    "input",
+    function() {
+
+        detenerAnimacion();
+
+        dibujarLluvia(
+            Number(this.value)
+        );
+    }
+);
+
+// =====================================
+// 12. CONTROL DE CAPAS
+// =====================================
+
+$("verLluvia").addEventListener(
+    "change",
+    function() {
+
+        if (!heatLayer) return;
+
+        if (this.checked) {
+            if (!map.hasLayer(heatLayer)) {
+                heatLayer.addTo(map);
+            }
+        } else {
+            if (map.hasLayer(heatLayer)) {
+                map.removeLayer(heatLayer);
+            }
+        }
+    }
+);
+
+$("verCapital").addEventListener(
+    "change",
+    function() {
+
+        if (this.checked) {
+            if (!map.hasLayer(capital)) {
+                map.addLayer(capital);
+            }
+        } else {
+            if (map.hasLayer(capital)) {
+                map.removeLayer(capital);
+            }
+        }
+    }
+);
+
+// =====================================
+// 13. ACTUALIZACIÓN
+// =====================================
+
+$("actualizar").addEventListener(
+    "click",
+    cargarPronostico
+);
+
+// =====================================
+// 14. PANEL
+// =====================================
+
+function ocultarPanel() {
+    $("panel").style.display = "none";
+    $("abrir").style.display = "block";
+}
+
+function mostrarPanel() {
+    $("panel").style.display = "block";
+    $("abrir").style.display = "none";
+}
+
+// =====================================
+// 15. INICIO
+// =====================================
+
+window.addEventListener(
+    "pagehide",
+    detenerAnimacion
+);
+
+cargarPronostico();
+
+setInterval(
+    cargarPronostico,
+    30 * 60 * 1000
+);
+
+console.log(
+    "DRENAR - Precipitación localizada"
+);
+
+</script>
+</body>
+</html>
